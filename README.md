@@ -4,6 +4,34 @@ A local video download, conversion and organization toolkit with a Flask dashboa
 Download from supported sources, convert media with FFmpeg, browse local videos,
 and optionally describe frames with BLIP or export organized videos to Andrew.
 
+## At a glance
+
+| Built for | Core stack | Default interface |
+| --- | --- | --- |
+| Local media preparation and organization | Python, Flask, FFmpeg | Browser dashboard on port 5000 |
+
+## How it works
+
+```text
+Dashboard task -> local queue -> download, conversion or organization worker
+Local media folders -> library view -> optional frame analysis and export
+```
+
+The dashboard submits work to a single queue worker and displays task progress
+and logs. FFmpeg handles media conversion. Optional BLIP analysis describes
+sampled frames; these descriptions are suggestions to review before renaming.
+
+## Example workflows
+
+| Goal | Workflow | Result |
+| --- | --- | --- |
+| Prepare audio | Select a local video and choose WAV conversion | An audio file for a downstream workflow |
+| Build a media collection | Submit supported URLs for media you may use, then inspect the queue | Downloaded files available in the local library |
+| Organize clips | Preview optional analysis, review proposed names, then organize | A more searchable local collection |
+
+See [usage examples](docs/EXAMPLES.md) for a first-run walkthrough and read-only API calls.
+
+
 ## Quick start
 
 Requirements: Python 3.10 or newer and FFmpeg on `PATH`. The Windows launchers
