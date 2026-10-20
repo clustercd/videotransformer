@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoTransformer - Library</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <a href="/" class="text-gray-500 hover:text-purple-600">
+                        <i class="fas fa-arrow-left"></i>
+                    </a>
+                    <i class="fas fa-photo-film text-2xl text-purple-600"></i>
+                    <h1 class="text-xl font-bold">Video library</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <input type="text" id="search" placeholder="Search..."
+                           class="bg-gray-100 border border-gray-300 rounded-lg px-4 py-2 text-sm w-64"
+                           oninput="filterVideos()">
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <!-- Filters -->
+        <div class="flex flex-wrap gap-2 mb-6" id="folder-filters">
+            <button onclick="filterByFolder('all')" class="folder-btn bg-purple-600 text-white px-4 py-2 rounded-lg text-sm shadow-sm" data-folder="all">
+                All
+            </button>
+        </div>
+
+        <!-- Stats -->
+        <div class="mb-6 text-gray-500 text-sm">
+            <span id="video-count">0</span> videos • <span id="total-size">0</span> MB
+        </div>
+
+        <!-- Video Grid -->
+        <div id="video-grid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div class="text-gray-400 col-span-full text-center py-10">
+                <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+                <p>Loading...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Video Modal -->
+    <div id="video-modal" class="fixed inset-0 bg-black bg-opacity-70 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl max-w-4xl w-full mx-4 shadow-2xl">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 id="modal-title" class="font-semibold truncate text-gray-800"></h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-4 bg-gray-900 rounded-b-xl">
+                <video id="modal-video" controls class="w-full rounded" style="max-height: 60vh;"></video>
+            </div>
+            <div class="p-4 border-t border-gray-200 text-sm text-gray-500">
+                <p><strong>Folder:</strong> <span id="modal-folder"></span></p>
+                <p><strong>Size:</strong> <span id="modal-size"></span> MB</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allVideos = [];
+        let currentFolder = 'all';
+
+        async function loadVideos() {
+            try {
+                const [videosRes, foldersRes] = await Promise.all([
+                    fetch('/api/videos'),
+                    fetch('/api/folders')
+                ]);
+
+                allVideos = await videosRes.json();
+                const folders = await foldersRes.json();
+
+                // Build folder filters
+                const filtersDiv = document.getElementById('folder-filters');
+                filtersDiv.innerHTML = `
+                    <button onclick="filterByFolder('all')" class="folder-btn bg-purple-600 text-white px-4 py-2 rounded-lg text-sm shadow-sm" data-folder="all">
+                        All (${allVideos.length})
+                    </button>
+                `;
+
+                Object.entries(folders)
+                    .sort((a, b) => b[1].count - a[1].count)
+                    .forEach(([folder, stats]) => {
+                        filtersDiv.innerHTML += `
+                            <button onclick="filterByFolder('${folder}')"
+                                    class="folder-btn bg-white border border-gray-300 hover:border-purple-400 px-4 py-2 rounded-lg text-sm shadow-sm"
+                                    data-folder="${folder}">
+                                ${folder} (${stats.count})
+                            </button>
+                        `;
+                    });
+
+                renderVideos(allVideos);
+
+            } catch (e) {
+                console.error('Error loading videos:', e);
+                document.getElementById('video-grid').innerHTML = `
+                    <div class="text-red-500 col-span-full text-center py-10">
+                        <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                        <p>Could not load content</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderVideos(videos) {
+            const grid = document.getElementById('video-grid');
+
+            if (videos.length === 0) {
+                grid.innerHTML = `
+                    <div class="text-gray-400 col-span-full text-center py-10">
+                        <i class="fas fa-video-slash text-4xl mb-4"></i>
+                        <p>No videos found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const totalSize = videos.reduce((sum, v) => sum + v.size_mb, 0);
+            document.getElementById('video-count').textContent = videos.length;
+            document.getElementById('total-size').textContent = totalSize.toFixed(2);
+
+            grid.innerHTML = videos.map((video, i) => `
+                <div class="bg-white rounded-xl overflow-hidden hover:ring-2 hover:ring-purple-500 cursor-pointer transition-all shadow-sm border border-gray-200"
+                     onclick="openVideo(${i})">
+                    <div class="aspect-video bg-gray-200 flex items-center justify-center">
+                        <i class="fas fa-play text-4xl text-gray-400"></i>
+                    </div>
+                    <div class="p-2">
+                        <p class="text-xs truncate text-gray-700" title="${video.name}">${video.name}</p>
+                        <p class="text-xs text-gray-400">${video.folder} • ${video.size_mb} MB</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterByFolder(folder) {
+            currentFolder = folder;
+
+            // Update button styles
+            document.querySelectorAll('.folder-btn').forEach(btn => {
+                if (btn.dataset.folder === folder) {
+                    btn.classList.remove('bg-white', 'border-gray-300');
+                    btn.classList.add('bg-purple-600', 'text-white');
+                } else {
+                    btn.classList.remove('bg-purple-600', 'text-white');
+                    btn.classList.add('bg-white', 'border-gray-300');
+                }
+            });
+
+            filterVideos();
+        }
+
+        function filterVideos() {
+            const search = document.getElementById('search').value.toLowerCase();
+
+            let filtered = allVideos;
+
+            if (currentFolder !== 'all') {
+                filtered = filtered.filter(v => v.folder === currentFolder);
+            }
+
+            if (search) {
+                filtered = filtered.filter(v =>
+                    v.name.toLowerCase().includes(search) ||
+                    v.folder.toLowerCase().includes(search)
+                );
+            }
+
+            renderVideos(filtered);
+        }
+
+        function openVideo(index) {
+            const videos = getFilteredVideos();
+            const video = videos[index];
+
+            document.getElementById('modal-title').textContent = video.name;
+            document.getElementById('modal-folder').textContent = video.folder;
+            document.getElementById('modal-size').textContent = video.size_mb;
+            document.getElementById('modal-video').src = `/video/${video.path}`;
+            document.getElementById('video-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('video-modal').classList.add('hidden');
+            document.getElementById('modal-video').pause();
+            document.getElementById('modal-video').src = '';
+        }
+
+        function getFilteredVideos() {
+            const search = document.getElementById('search').value.toLowerCase();
+            let filtered = allVideos;
+
+            if (currentFolder !== 'all') {
+                filtered = filtered.filter(v => v.folder === currentFolder);
+            }
+
+            if (search) {
+                filtered = filtered.filter(v =>
+                    v.name.toLowerCase().includes(search) ||
+                    v.folder.toLowerCase().includes(search)
+                );
+            }
+
+            return filtered;
+        }
+
+        // Close modal on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Load on start
+        loadVideos();
+    </script>
+</body>
+</html>

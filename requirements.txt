@@ -1,0 +1,15 @@
+# Core AI/Vision
+torch
+torchvision
+transformers
+pillow
+opencv-python
+
+# Web Interface
+flask
+flask-socketio
+requests
+
+# Download
+yt-dlp
+curl_cffi

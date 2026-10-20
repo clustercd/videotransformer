@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoTransformer - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .log-container { max-height: 300px; overflow-y: auto; }
+        .log-entry { font-family: monospace; font-size: 12px; }
+        .log-error { color: #dc2626; }
+        .log-success { color: #16a34a; }
+        .log-info { color: #6b7280; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-film text-2xl text-purple-600"></i>
+                    <h1 class="text-xl font-bold text-gray-800">VideoTransformer</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="/videos" class="text-gray-500 hover:text-purple-600 flex items-center space-x-1">
+                        <i class="fas fa-photo-film"></i>
+                        <span class="text-sm">Library</span>
+                    </a>
+                    <button onclick="openDataFolder()" class="text-gray-500 hover:text-purple-600 flex items-center space-x-1" title="Open the data folder">
+                        <i class="fas fa-folder-open"></i>
+                        <span class="text-sm">Folder</span>
+                    </button>
+                    <div id="status-indicator" class="flex items-center space-x-2">
+                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                        <span class="text-sm text-gray-500">Connected</span>
+                    </div>
+                    <button onclick="openConfig()" class="text-gray-500 hover:text-purple-600">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-xl p-4 card-hover transition-all shadow-sm border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Total videos</p>
+                        <p id="stat-total" class="text-2xl font-bold text-gray-800">-</p>
+                    </div>
+                    <i class="fas fa-video text-3xl text-purple-500 opacity-50"></i>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl p-4 card-hover transition-all shadow-sm border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Total size</p>
+                        <p id="stat-size" class="text-2xl font-bold text-gray-800">-</p>
+                    </div>
+                    <i class="fas fa-database text-3xl text-blue-500 opacity-50"></i>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl p-4 card-hover transition-all shadow-sm border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Task queue</p>
+                        <p id="stat-queue" class="text-2xl font-bold text-gray-800">0</p>
+                    </div>
+                    <i class="fas fa-list text-3xl text-yellow-500 opacity-50"></i>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl p-4 card-hover transition-all shadow-sm border border-gray-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-500 text-sm">Status</p>
+                        <p id="stat-status" class="text-2xl font-bold text-green-600">Ready</p>
+                    </div>
+                    <i class="fas fa-check-circle text-3xl text-green-500 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Actions Panel -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center text-gray-800">
+                        <i class="fas fa-rocket mr-2 text-purple-600"></i>
+                        Actions
+                    </h2>
+
+                    <!-- Tabs -->
+                    <div class="flex flex-wrap gap-2 mb-4 border-b border-gray-200 pb-2">
+                        <button onclick="showTab('direct')" id="tab-direct" class="tab-btn px-4 py-2 rounded-t bg-purple-600 text-white">
+                            <i class="fas fa-link mr-2"></i>Direct URL
+                        </button>
+                        <button onclick="showTab('download')" id="tab-download" class="tab-btn px-4 py-2 rounded-t bg-gray-200 text-gray-600 hover:bg-gray-300">
+                            <i class="fas fa-download mr-2"></i>Sources
+                        </button>
+                        <button onclick="showTab('facebook')" id="tab-facebook" class="tab-btn px-4 py-2 rounded-t bg-gray-200 text-gray-600 hover:bg-gray-300">
+                            <i class="fab fa-facebook mr-2"></i>Facebook
+                        </button>
+                        <button onclick="showTab('analyze')" id="tab-analyze" class="tab-btn px-4 py-2 rounded-t bg-gray-200 text-gray-600 hover:bg-gray-300">
+                            <i class="fas fa-brain mr-2"></i>Analyze
+                        </button>
+                        <button onclick="showTab('organize')" id="tab-organize" class="tab-btn px-4 py-2 rounded-t bg-gray-200 text-gray-600 hover:bg-gray-300">
+                            <i class="fas fa-folder-tree mr-2"></i>Organize
+                        </button>
+                        <button onclick="showTab('wav')" id="tab-wav" class="tab-btn px-4 py-2 rounded-t bg-gray-200 text-gray-600 hover:bg-gray-300">
+                            <i class="fas fa-wave-square mr-2"></i>WAV
+                        </button>
+                        <button onclick="showTab('convert')" id="tab-convert" class="tab-btn px-4 py-2 rounded-t bg-gray-200 text-gray-600 hover:bg-gray-300">
+                            <i class="fas fa-exchange-alt mr-2"></i>Convert
+                        </button>
+                    </div>
+
+                    <!-- Direct URL Tab -->
+                    <div id="panel-direct" class="tab-panel">
+                        <!-- YouTube Channel Section -->
+                        <div class="bg-red-50 rounded-lg p-6 border border-red-200 mb-4">
+                            <h3 class="font-semibold mb-4 flex items-center text-gray-700">
+                                <i class="fab fa-youtube mr-2 text-red-500"></i>
+                                Download from YouTube
+                            </h3>
+                            <p class="text-gray-500 text-sm mb-4">
+                                Channel, playlist or search results, with duration and count filters
+                            </p>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-sm text-gray-600 font-medium">YouTube URL *</label>
+                                        <input type="text" id="channel-url"
+                                               placeholder="Channel, playlist or search..."
+                                               class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                        <p class="text-xs text-gray-400 mt-1">Ex: @ExampleChannel, /results?search_query=..., /playlist?list=...</p>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-gray-600 font-medium">Maximum duration (minutes)</label>
+                                        <input type="number" id="channel-max-duration" value="5" min="1" max="60"
+                                               class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-gray-600 font-medium">Maximum videos</label>
+                                        <input type="number" id="channel-max-videos" value="20" min="1" max="100"
+                                               class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-sm text-gray-600 font-medium">Video quality</label>
+                                        <select id="channel-quality" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                            <option value="480">480p (recommended)</option>
+                                            <option value="720">720p HD</option>
+                                            <option value="1080">1080p Full HD</option>
+                                            <option value="best">Best quality</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-gray-600 font-medium">Destination folder</label>
+                                        <select id="channel-destination" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                            <option value="youtube">📺 data/youtube/</option>
+                                            <option value="documentaires">📚 data/documentaires/</option>
+                                            <option value="educatif">🎓 data/educatif/</option>
+                                            <option value="nature">🌿 data/nature/</option>
+                                            <option value="science">🔬 data/science/</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-gray-600 font-medium">Language</label>
+                                        <select id="channel-language" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                            <option value="">🌐 All languages</option>
+                                            <option value="fr" selected>🇫🇷 French only</option>
+                                            <option value="en">🇬🇧 English only</option>
+                                            <option value="es">🇪🇸 Español</option>
+                                            <option value="de">🇩🇪 Deutsch</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center space-x-4 mt-2">
+                                        <label class="flex items-center text-sm text-gray-600">
+                                            <input type="checkbox" id="channel-shorts-only" class="mr-2">
+                                            Shorts only (&lt;60s)
+                                        </label>
+                                        <label class="flex items-center text-sm text-gray-600">
+                                            <input type="checkbox" id="channel-no-shorts" class="mr-2" checked>
+                                            Exclude Shorts
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-2 mt-4">
+                                <button onclick="startChannelDownload()"
+                                        class="flex-1 bg-red-500 hover:bg-red-600 text-white rounded py-3 font-semibold">
+                                    <i class="fas fa-download mr-2"></i>Download
+                                </button>
+                                <button onclick="resumeLastDownload()"
+                                        class="bg-orange-500 hover:bg-orange-600 text-white rounded py-3 px-4 font-semibold" title="Resume the last download">
+                                    <i class="fas fa-redo"></i>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-2 text-center">
+                                <i class="fas fa-info-circle mr-1"></i>Previously downloaded videos are skipped automatically
+                            </p>
+                        </div>
+
+                        <hr class="my-6 border-gray-200">
+                        <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                            <h3 class="font-semibold mb-4 flex items-center text-gray-700">
+                                <i class="fas fa-link mr-2 text-orange-500"></i>
+                                Direct download (UQLoad, etc.)
+                            </h3>
+                            <p class="text-gray-500 text-sm mb-4">
+                                Download from supported video hosts with yt-dlp.
+                                Automatically handles headers and referer.
+                            </p>
+
+                            <div class="space-y-4">
+                                <!-- URL Input -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium">Video URL *</label>
+                                    <input type="text" id="direct-url" placeholder="https://m60.uqload.bz/..."
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                </div>
+
+                                <!-- Referer (auto-detect or manual) -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium">Referer (auto-detected when empty)</label>
+                                    <select id="direct-referer-preset" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1" onchange="updateReferer()">
+                                        <option value="auto">🔄 Auto-detect</option>
+                                        <option value="https://uqload.bz/">UQLoad</option>
+                                        <option value="https://vidcloud.co/">VidCloud</option>
+                                        <option value="https://streamtape.com/">Streamtape</option>
+                                        <option value="https://doodstream.com/">DoodStream</option>
+                                        <option value="https://mixdrop.co/">MixDrop</option>
+                                        <option value="custom">✏️ Custom...</option>
+                                    </select>
+                                    <input type="text" id="direct-referer-custom" placeholder="https://example.com/"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-2 hidden">
+                                </div>
+
+                                <!-- Filename -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium">Filename (optional)</label>
+                                    <input type="text" id="direct-filename" placeholder="My_Video_Episode_1"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                </div>
+
+                                <!-- Destination folder -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium">Destination folder</label>
+                                    <select id="direct-destination" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                        <option value="direct">📁 data/direct/</option>
+                                        <option value="series">📺 data/series/</option>
+                                        <option value="films">🎬 data/films/</option>
+                                        <option value="documentaires">📚 data/documentaires/</option>
+                                        <option value="custom">✏️ Custom folder...</option>
+                                    </select>
+                                    <input type="text" id="direct-destination-custom" placeholder="my_folder"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-2 hidden">
+                                </div>
+
+                                <!-- Cookies browser -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium">Cookies (when required by the source)</label>
+                                    <select id="direct-cookies" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                        <option value="">🚫 None</option>
+                                        <option value="chrome">🌐 Chrome</option>
+                                        <option value="firefox">🦊 Firefox</option>
+                                        <option value="edge">🔷 Edge</option>
+                                        <option value="brave">🧡 Brave</option>
+                                        <option value="file">📄 cookies.txt file</option>
+                                    </select>
+                                    <p class="text-xs text-gray-400 mt-1">Use browser cookies when the source requires your session</p>
+                                </div>
+
+                                <button onclick="startDirectDownload()"
+                                        class="w-full bg-orange-500 hover:bg-orange-600 text-white rounded py-3 font-semibold">
+                                    <i class="fas fa-download mr-2"></i>Download
+                                </button>
+                            </div>
+
+                            <!-- Batch mode -->
+                            <div class="mt-6 pt-4 border-t border-gray-200">
+                                <h4 class="font-medium text-gray-700 mb-2">
+                                    <i class="fas fa-list-ol mr-2"></i>Batch mode (multiple URLs)
+                                </h4>
+                                <textarea id="direct-batch-urls" rows="4"
+                                          placeholder="One URL per line...&#10;https://m60.uqload.bz/xxx/v.mp4&#10;https://m70.uqload.bz/yyy/v.mp4"
+                                          class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono"></textarea>
+                                <button onclick="startBatchDownload()"
+                                        class="w-full mt-2 bg-gray-600 hover:bg-gray-700 text-white rounded py-2 text-sm font-semibold">
+                                    <i class="fas fa-layer-group mr-2"></i>Download all (batch)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Facebook Tab -->
+                    <div id="panel-facebook" class="tab-panel hidden">
+                        <div class="bg-blue-50 rounded-lg p-6 border border-blue-200">
+                            <h3 class="font-semibold mb-2 flex items-center text-gray-700"><i class="fab fa-facebook mr-2 text-blue-600"></i>Download from Facebook</h3>
+                            <p class="text-sm text-gray-500 mb-4">Paste a Reel/video URL or page URLs, one per line. Set the limit to 0 to process all available results.</p>
+                            <label class="text-sm text-gray-600 font-medium">URL(s) Facebook *</label>
+                            <textarea id="facebook-urls" rows="5" placeholder="https://www.facebook.com/example/reels/" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1 font-mono"></textarea>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                                <div><label class="text-sm text-gray-600 font-medium">Maximum videos per URL (0 = unlimited)</label><input type="number" id="facebook-max-videos" value="0" min="0" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1"></div>
+                                <div><label class="text-sm text-gray-600 font-medium">Cookies (if required by Facebook)</label><select id="facebook-cookies" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1"><option value="">None</option><option value="chrome">Chrome</option><option value="firefox">Firefox</option><option value="edge">Edge</option><option value="brave">Brave</option><option value="file">cookies.txt in the data folder</option></select></div>
+                            </div>
+                            <button onclick="startFacebookDownload()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white rounded py-3 font-semibold"><i class="fas fa-download mr-2"></i>Download videos</button>
+                            <p class="text-xs text-gray-400 mt-2">Available videos are saved under data/facebook/. Previously archived downloads are skipped.</p>
+                        </div>
+                    </div>
+
+                    <!-- Download Tab -->
+                    <div id="panel-download" class="tab-panel hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- Pexels -->
+                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <h3 class="font-semibold mb-3 flex items-center text-gray-700">
+                                    <i class="fas fa-images mr-2 text-green-500"></i>Pexels
+                                </h3>
+                                <p class="text-sm text-gray-500 mb-3">Free HD stock footage</p>
+                                <div class="space-y-2">
+                                    <select id="pexels-category" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm">
+                                        <option value="science">Science</option>
+                                        <option value="nature">Nature</option>
+                                        <option value="espace">Space</option>
+                                        <option value="animaux">Animals</option>
+                                        <option value="transport">Transport</option>
+                                        <option value="sports">Sports</option>
+                                    </select>
+                                    <input type="text" id="pexels-keywords" placeholder="Keywords (optional)"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm">
+                                    <input type="number" id="pexels-count" value="5" min="1" max="20"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm">
+                                    <button onclick="startPexelsDownload()"
+                                            class="w-full bg-green-500 hover:bg-green-600 text-white rounded py-2 text-sm font-semibold">
+                                        <i class="fas fa-download mr-2"></i>Download
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- YouTube -->
+                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <h3 class="font-semibold mb-3 flex items-center text-gray-700">
+                                    <i class="fab fa-youtube mr-2 text-red-500"></i>YouTube CC
+                                </h3>
+                                <p class="text-sm text-gray-500 mb-3">Creative Commons videos</p>
+                                <div class="space-y-2">
+                                    <select id="youtube-category" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm">
+                                        <option value="science">Science</option>
+                                        <option value="geographie">Geography</option>
+                                        <option value="espace">Space</option>
+                                        <option value="nature">Nature</option>
+                                        <option value="histoire">History</option>
+                                    </select>
+                                    <input type="number" id="youtube-count" value="5" min="1" max="10"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm" placeholder="Count">
+                                    <button onclick="startYoutubeDownload()"
+                                            class="w-full bg-red-500 hover:bg-red-600 text-white rounded py-2 text-sm font-semibold">
+                                        <i class="fas fa-download mr-2"></i>Download
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Wikimedia -->
+                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <h3 class="font-semibold mb-3 flex items-center text-gray-700">
+                                    <i class="fab fa-wikipedia-w mr-2 text-gray-600"></i>Wikimedia
+                                </h3>
+                                <p class="text-sm text-gray-500 mb-3">No API key required</p>
+                                <div class="space-y-2">
+                                    <input type="text" id="wikimedia-keywords" placeholder="Keywords (comma-separated)"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm" value="nature,science">
+                                    <input type="number" id="wikimedia-count" value="3" min="1" max="10"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm" placeholder="Per keyword">
+                                    <button onclick="startWikimediaDownload()"
+                                            class="w-full bg-blue-500 hover:bg-blue-600 text-white rounded py-2 text-sm font-semibold">
+                                        <i class="fas fa-download mr-2"></i>Download
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analyze Tab -->
+                    <div id="panel-analyze" class="tab-panel hidden">
+                        <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                            <h3 class="font-semibold mb-4 flex items-center text-gray-700">
+                                <i class="fas fa-brain mr-2 text-pink-500"></i>
+                                AI analysis with BLIP
+                            </h3>
+                            <p class="text-gray-500 mb-4">
+                                Generate descriptions from video frames with a vision model.
+                            </p>
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label class="text-sm text-gray-500">Source folder</label>
+                                    <select id="analyze-source" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                        <option value="data">data/</option>
+                                        <option value="downloaded">data/downloaded/</option>
+                                        <option value="direct">data/direct/</option>
+                                        <option value="series">data/series/</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-gray-500">Mode</label>
+                                    <select id="analyze-mode" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm mt-1">
+                                        <option value="dry">Preview</option>
+                                        <option value="rename">Rename</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button onclick="startAnalysis()"
+                                    class="w-full bg-pink-500 hover:bg-pink-600 text-white rounded py-3 font-semibold">
+                                <i class="fas fa-play mr-2"></i>Start analysis
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- WAV Tab -->
+                    <div id="panel-wav" class="tab-panel hidden">
+                        <div class="bg-indigo-50 rounded-lg p-6 border border-indigo-200">
+                            <h3 class="font-semibold mb-4 flex items-center text-gray-700">
+                                <i class="fas fa-wave-square mr-2 text-indigo-500"></i>
+                                Convert to WAV
+                            </h3>
+                            <p class="text-gray-500 text-sm mb-5">
+                                Extract audio tracks from videos in a folder and save them as <strong>.wav</strong> uncompressed audio (16-bit PCM).
+                            </p>
+
+                            <!-- Source folder -->
+                            <div class="mb-4">
+                                <label class="text-sm text-gray-600 font-medium block mb-1">Source folder *</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="wav-folder" placeholder="C:\media"
+                                           class="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono">
+                                    <button onclick="browseWavFolder()"
+                                            class="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded px-3 py-2 text-sm whitespace-nowrap">
+                                        <i class="fas fa-folder-open"></i> Browse
+                                    </button>
+                                </div>
+                                <!-- Raccourcis dossiers data -->
+                                <div id="wav-quick-folders" class="flex flex-wrap gap-1 mt-2"></div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <!-- Output -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium block mb-1">Output folder</label>
+                                    <select id="wav-output-mode" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm" onchange="toggleWavCustomOut()">
+                                        <option value="subfolder">📂 /wav subfolder (recommended)</option>
+                                        <option value="same">↔️  Same folder as the source</option>
+                                        <option value="custom">✏️  Custom path...</option>
+                                    </select>
+                                    <input type="text" id="wav-output-custom" placeholder="C:\output\wav"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono mt-2 hidden">
+                                </div>
+
+                                <!-- Sample rate -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium block mb-1">Sample rate</label>
+                                    <select id="wav-sample-rate" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm">
+                                        <option value="22050">22 050 Hz (compact, radio)</option>
+                                        <option value="44100" selected>44 100 Hz (CD — recommended)</option>
+                                        <option value="48000">48 000 Hz (studio / video)</option>
+                                        <option value="16000">16 000 Hz (speech recognition)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Channels -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium block mb-1">Audio channels</label>
+                                    <select id="wav-channels" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm">
+                                        <option value="2" selected>🔊 Stereo (2 channels)</option>
+                                        <option value="1">📢 Mono (1 channel)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Overwrite -->
+                                <div class="flex items-end">
+                                    <label class="flex items-center text-sm text-gray-600 cursor-pointer">
+                                        <input type="checkbox" id="wav-overwrite" class="mr-2">
+                                        Overwrite existing WAV files
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button onclick="startWavConvert()"
+                                    class="w-full bg-indigo-500 hover:bg-indigo-600 text-white rounded py-3 font-semibold">
+                                <i class="fas fa-wave-square mr-2"></i>Convert to WAV
+                            </button>
+                            <p class="text-xs text-gray-400 mt-2 text-center">
+                                <i class="fas fa-info-circle mr-1"></i>Requires FFmpeg on PATH
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Convert Tab -->
+                    <div id="panel-convert" class="tab-panel hidden">
+                        <div class="bg-emerald-50 rounded-lg p-6 border border-emerald-200">
+                            <h3 class="font-semibold mb-4 flex items-center text-gray-700">
+                                <i class="fas fa-exchange-alt mr-2 text-emerald-500"></i>
+                                Convert a media file
+                            </h3>
+                            <p class="text-gray-500 text-sm mb-5">
+                                Convert media files to your chosen audio or video format.
+                            </p>
+
+                            <!-- Source mode -->
+                            <div class="mb-4">
+                                <label class="text-sm text-gray-600 font-medium block mb-2">Source mode</label>
+                                <div class="flex gap-2">
+                                    <button onclick="setConvertMode('file')" id="conv-mode-file"
+                                            class="px-4 py-2 rounded text-sm font-semibold bg-emerald-500 text-white">
+                                        <i class="fas fa-file-video mr-1"></i> Single file
+                                    </button>
+                                    <button onclick="setConvertMode('folder')" id="conv-mode-folder"
+                                            class="px-4 py-2 rounded text-sm font-semibold bg-gray-200 text-gray-600 hover:bg-gray-300">
+                                        <i class="fas fa-folder mr-1"></i> Folder (batch)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Source fichier unique -->
+                            <div id="conv-source-file" class="mb-4">
+                                <label class="text-sm text-gray-600 font-medium block mb-1">Source file *</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="conv-file" placeholder="C:\media\example.mkv"
+                                           class="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono">
+                                    <button onclick="browseConvFile()"
+                                            class="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded px-3 py-2 text-sm whitespace-nowrap">
+                                        <i class="fas fa-file-open"></i> Choose
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Source dossier -->
+                            <div id="conv-source-folder" class="mb-4 hidden">
+                                <label class="text-sm text-gray-600 font-medium block mb-1">Source folder *</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="conv-folder" placeholder="C:\media"
+                                           class="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono">
+                                    <button onclick="browseConvFolder()"
+                                            class="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded px-3 py-2 text-sm whitespace-nowrap">
+                                        <i class="fas fa-folder-open"></i> Browse
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">Convert all media files in the folder</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <!-- Output format -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium block mb-1">Output format *</label>
+                                    <select id="conv-format" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm" onchange="updateConvOptions()">
+                                        <optgroup label="🎵 Audio">
+                                            <option value="mp3">MP3 — universal, compressed</option>
+                                            <option value="wav">WAV — uncompressed PCM</option>
+                                            <option value="aac">AAC — high quality for iTunes/mobile</option>
+                                            <option value="ogg">OGG Vorbis — open source</option>
+                                            <option value="flac">FLAC — lossless</option>
+                                            <option value="m4a">M4A — Apple audio</option>
+                                            <option value="opus">Opus — voice/streaming</option>
+                                        </optgroup>
+                                        <optgroup label="🎬 Video">
+                                            <option value="mp4">MP4 — universal H.264</option>
+                                            <option value="webm">WebM — web-optimized</option>
+                                            <option value="mkv">MKV — universal container</option>
+                                            <option value="avi">AVI — legacy compatibility</option>
+                                            <option value="mov">MOV — Apple/Final Cut</option>
+                                            <option value="gif">GIF — animation (short clips)</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+
+                                <!-- Output folder -->
+                                <div>
+                                    <label class="text-sm text-gray-600 font-medium block mb-1">Output folder</label>
+                                    <select id="conv-out-mode" class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm" onchange="toggleConvOutCustom()">
+                                        <option value="same">↔️ Same folder as the source</option>
+                                        <option value="subfolder">📂 /converted subfolder</option>
+                                        <option value="custom">✏️ Custom path...</option>
+                                    </select>
+                                    <input type="text" id="conv-out-custom" placeholder="C:\output"
+                                           class="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm font-mono mt-2 hidden">
+                                </div>
+                            </div>
+
+                            <!-- Audio options (mp3, aac, ogg, m4a, opus) -->
+                            <div id="conv-opts-audio" class="hidden bg-white rounded p-4 border border-gray-200 mb-4">
+                                <h4 class="text-sm font-semibold text-gray-600 mb-3"><i class="fas fa-music mr-2"></i>Audio options</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="text-xs text-gray-500">Bitrate</label>
+                                        <select id="conv-bitrate" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                            <option value="128k">128 kbps (light)</option>
+                                            <option value="192k" selected>192 kbps (standard)</option>
+                                            <option value="256k">256 kbps (high quality)</option>
+                                            <option value="320k">320 kbps (max)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500">Channels</label>
+                                        <select id="conv-audio-channels" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                            <option value="2">🔊 Stereo</option>
+                                            <option value="1">📢 Mono</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- WAV options -->
+                            <div id="conv-opts-wav" class="hidden bg-white rounded p-4 border border-gray-200 mb-4">
+                                <h4 class="text-sm font-semibold text-gray-600 mb-3"><i class="fas fa-wave-square mr-2"></i>WAV options</h4>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="text-xs text-gray-500">Sample rate</label>
+                                        <select id="conv-samplerate" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                            <option value="16000">16 000 Hz (voice)</option>
+                                            <option value="22050">22 050 Hz (radio)</option>
+                                            <option value="44100" selected>44 100 Hz (CD)</option>
+                                            <option value="48000">48 000 Hz (studio)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500">Channels</label>
+                                        <select id="conv-wav-channels" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                            <option value="2">🔊 Stereo</option>
+                                            <option value="1">📢 Mono</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Video options -->
+                            <div id="conv-opts-video" class="hidden bg-white rounded p-4 border border-gray-200 mb-4">
+                                <h4 class="text-sm font-semibold text-gray-600 mb-3"><i class="fas fa-film mr-2"></i>Video options</h4>
+                                <div id="conv-tv-compat-row" class="hidden mb-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                                    <label class="flex items-center text-sm text-blue-800 cursor-pointer font-medium">
+                                        <input type="checkbox" id="conv-tv-compatible" class="mr-2" checked>
+                                        <i class="fas fa-tv mr-2"></i>Samsung / Smart TV compatibility
+                                    </label>
+                                    <p class="text-xs text-blue-600 mt-1 ml-5">H.264 Main Profile + AAC 48kHz + faststart — settings intended for TV playback</p>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="text-xs text-gray-500">Maximum resolution</label>
+                                        <select id="conv-resolution" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                            <option value="">Keep original</option>
+                                            <option value="480">480p</option>
+                                            <option value="720">720p HD</option>
+                                            <option value="1080">1080p Full HD</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500">Quality (CRF)</label>
+                                        <select id="conv-crf" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                            <option value="18">High (18)</option>
+                                            <option value="23" selected>Standard (23)</option>
+                                            <option value="28">Light (28)</option>
+                                            <option value="35">Very light (35)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- GIF options -->
+                            <div id="conv-opts-gif" class="hidden bg-white rounded p-4 border border-gray-200 mb-4">
+                                <h4 class="text-sm font-semibold text-gray-600 mb-3"><i class="fas fa-images mr-2"></i>GIF options</h4>
+                                <div class="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <label class="text-xs text-gray-500">Start (seconds)</label>
+                                        <input type="number" id="conv-gif-start" value="0" min="0" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500">Duration (seconds)</label>
+                                        <input type="number" id="conv-gif-duration" value="5" min="1" max="30" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500">FPS</label>
+                                        <input type="number" id="conv-gif-fps" value="15" min="5" max="30" class="w-full bg-gray-50 border border-gray-300 rounded px-2 py-1.5 text-sm mt-1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Overwrite + bouton -->
+                            <div class="flex items-center justify-between mt-2 mb-4">
+                                <label class="flex items-center text-sm text-gray-600 cursor-pointer">
+                                    <input type="checkbox" id="conv-overwrite" class="mr-2">
+                                    Overwrite existing files
+                                </label>
+                                <span id="conv-info" class="text-xs text-gray-400"></span>
+                            </div>
+
+                            <button onclick="startConvertFile()"
+                                    class="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded py-3 font-semibold">
+                                <i class="fas fa-exchange-alt mr-2"></i>Convert
+                            </button>
+                            <p class="text-xs text-gray-400 mt-2 text-center">
+                                <i class="fas fa-info-circle mr-1"></i>Requires FFmpeg on PATH
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Organize Tab -->
+                    <div id="panel-organize" class="tab-panel hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <h3 class="font-semibold mb-3 flex items-center text-gray-700">
+                                    <i class="fas fa-folder mr-2 text-yellow-500"></i>
+                                    Simple organization
+                                </h3>
+                                <p class="text-gray-500 text-sm mb-4">
+                                    Group by category: animals, nature, science and more
+                                </p>
+                                <button onclick="startOrganize('simple')"
+                                        class="w-full bg-yellow-500 hover:bg-yellow-600 text-white rounded py-2 text-sm font-semibold">
+                                    <i class="fas fa-magic mr-2"></i>Organize
+                                </button>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                <h3 class="font-semibold mb-3 flex items-center text-gray-700">
+                                    <i class="fas fa-sitemap mr-2 text-cyan-500"></i>
+                                    Andrew organization
+                                </h3>
+                                <p class="text-gray-500 text-sm mb-4">
+                                    Organize by age, subject and topic.
+                                </p>
+                                <button onclick="startOrganize('andrew')"
+                                        class="w-full bg-cyan-500 hover:bg-cyan-600 text-white rounded py-2 text-sm font-semibold">
+                                    <i class="fas fa-magic mr-2"></i>Organize for Andrew
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Queue Panel -->
+                <div class="bg-white rounded-xl p-6 mt-6 shadow-sm border border-gray-200">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center justify-between text-gray-800">
+                        <span><i class="fas fa-tasks mr-2 text-yellow-500"></i>Task queue</span>
+                        <span id="queue-count" class="text-sm bg-gray-200 text-gray-600 px-3 py-1 rounded-full">0 tasks</span>
+                    </h2>
+                    <div id="queue-list" class="space-y-2">
+                        <div class="text-gray-400 text-center py-4">No queued tasks</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Panel -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-xl p-6 sticky top-20 shadow-sm border border-gray-200">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center justify-between text-gray-800">
+                        <span><i class="fas fa-terminal mr-2 text-green-500"></i>Logs</span>
+                        <button onclick="clearLogs()" class="text-xs text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </h2>
+                    <div id="logs" class="log-container bg-gray-50 border border-gray-200 rounded p-3 text-xs font-mono">
+                        <div class="text-gray-400">Waiting for logs...</div>
+                    </div>
+                </div>
+
+                <!-- Categories Stats -->
+                <div class="bg-white rounded-xl p-6 mt-6 shadow-sm border border-gray-200">
+                    <h2 class="text-lg font-semibold mb-4 text-gray-800">
+                        <i class="fas fa-chart-pie mr-2 text-blue-500"></i>By category
+                    </h2>
+                    <div id="category-stats" class="space-y-2">
+                        <div class="text-gray-400 text-sm">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Config Modal -->
+    <div id="config-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
+            <h2 class="text-lg font-semibold mb-4 text-gray-800">
+                <i class="fas fa-cog mr-2"></i>Settings
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm text-gray-500">Pexels API key</label>
+                    <input type="text" id="config-pexels-key"
+                           class="w-full bg-gray-50 border border-gray-300 rounded px-3 py-2 mt-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-500">Maximum file size (MB)</label>
+                    <input type="number" id="config-max-size" value="30"
+                           class="w-full bg-gray-50 border border-gray-300 rounded px-3 py-2 mt-1 text-sm">
+                </div>
+            </div>
+            <div class="flex space-x-2 mt-6">
+                <button onclick="saveConfig()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white rounded py-2">
+                    Save
+                </button>
+                <button onclick="closeConfig()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded py-2">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        socket.on('connect', () => updateStatus(true));
+        socket.on('disconnect', () => updateStatus(false));
+        socket.on('log', (data) => addLog(data.message, data.level));
+        socket.on('task_started', (task) => { addLog(`🚀 Starting: ${task.name}`, 'info'); updateQueueDisplay(); });
+        socket.on('task_completed', (task) => { if (task.status === 'completed') addLog(`✅ Completed: ${task.name}`, 'success'); updateQueueDisplay(); loadStats(); });
+        socket.on('queue_update', (data) => { document.getElementById('stat-queue').textContent = data.queue_size; updateQueueDisplay(); });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadConfig();
+            setInterval(loadStats, 30000);
+
+            // Setup dynamic fields
+            document.getElementById('direct-referer-preset').addEventListener('change', updateReferer);
+            document.getElementById('direct-destination').addEventListener('change', updateDestination);
+        });
+
+        // Dynamic field handlers
+        function updateReferer() {
+            const preset = document.getElementById('direct-referer-preset').value;
+            const custom = document.getElementById('direct-referer-custom');
+            custom.classList.toggle('hidden', preset !== 'custom');
+        }
+
+        function updateDestination() {
+            const preset = document.getElementById('direct-destination').value;
+            const custom = document.getElementById('direct-destination-custom');
+            custom.classList.toggle('hidden', preset !== 'custom');
+        }
+
+        // Stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                document.getElementById('stat-total').textContent = stats.total;
+                document.getElementById('stat-size').textContent = `${stats.total_size_mb} MB`;
+
+                const catContainer = document.getElementById('category-stats');
+                const categories = stats.by_category || {};
+                const sortedCats = Object.entries(categories).sort((a, b) => b[1] - a[1]);
+
+                if (sortedCats.length === 0) {
+                    catContainer.innerHTML = '<div class="text-gray-400 text-sm">No categories</div>';
+                } else {
+                    catContainer.innerHTML = sortedCats.slice(0, 10).map(([cat, count]) => {
+                        const pct = Math.round((count / stats.total) * 100);
+                        return `<div class="flex items-center justify-between text-sm"><span class="text-gray-700">${cat}</span><span class="text-gray-500">${count}</span></div><div class="w-full bg-gray-200 rounded h-1.5 mb-2"><div class="bg-purple-500 h-1.5 rounded" style="width:${pct}%"></div></div>`;
+                    }).join('');
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // Tabs
+        function showTab(tab) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('bg-purple-600', 'text-white');
+                b.classList.add('bg-gray-200', 'text-gray-600');
+            });
+            document.getElementById(`panel-${tab}`).classList.remove('hidden');
+            document.getElementById(`tab-${tab}`).classList.remove('bg-gray-200', 'text-gray-600');
+            document.getElementById(`tab-${tab}`).classList.add('bg-purple-600', 'text-white');
+            if (tab === 'wav') loadWavQuickFolders();
+        }
+
+        // Direct download
+        async function startDirectDownload() {
+            const url = document.getElementById('direct-url').value.trim();
+            if (!url) { addLog('❌ URL required', 'error'); return; }
+
+            const refererPreset = document.getElementById('direct-referer-preset').value;
+            let referer = '';
+            if (refererPreset === 'custom') {
+                referer = document.getElementById('direct-referer-custom').value.trim();
+            } else if (refererPreset !== 'auto') {
+                referer = refererPreset;
+            }
+
+            const filename = document.getElementById('direct-filename').value.trim();
+            const cookies = document.getElementById('direct-cookies').value;
+
+            const destPreset = document.getElementById('direct-destination').value;
+            let destination = destPreset;
+            if (destPreset === 'custom') {
+                destination = document.getElementById('direct-destination-custom').value.trim() || 'direct';
+            }
+
+            await addTask({
+                type: 'download_direct',
+                name: `Direct: ${filename || url.substring(0, 40)}...`,
+                params: { url, referer, filename, destination, cookies }
+            });
+
+            // Clear fields
+            document.getElementById('direct-url').value = '';
+            document.getElementById('direct-filename').value = '';
+        }
+
+        async function startBatchDownload() {
+            const urls = document.getElementById('direct-batch-urls').value.trim().split('\n').filter(u => u.trim());
+            if (urls.length === 0) { addLog('❌ No URLs', 'error'); return; }
+
+            const refererPreset = document.getElementById('direct-referer-preset').value;
+            let referer = '';
+            if (refererPreset === 'custom') {
+                referer = document.getElementById('direct-referer-custom').value.trim();
+            } else if (refererPreset !== 'auto') {
+                referer = refererPreset;
+            }
+
+            const cookies = document.getElementById('direct-cookies').value;
+
+            const destPreset = document.getElementById('direct-destination').value;
+            let destination = destPreset === 'custom'
+                ? (document.getElementById('direct-destination-custom').value.trim() || 'direct')
+                : destPreset;
+
+            await addTask({
+                type: 'download_batch',
+                name: `Batch: ${urls.length} videos`,
+                params: { urls, referer, destination, cookies }
+            });
+
+            document.getElementById('direct-batch-urls').value = '';
+        }
+
+        async function startFacebookDownload() {
+            const urls = document.getElementById('facebook-urls').value.split('\n').map(u => u.trim()).filter(Boolean);
+            if (!urls.length) { addLog('❌ Facebook URL required', 'error'); return; }
+            if (urls.some(url => !/facebook\.com/i.test(url))) { addLog('❌ All URLs must point to Facebook', 'error'); return; }
+            const maxVideos = parseInt(document.getElementById('facebook-max-videos').value) || 0;
+            const cookies = document.getElementById('facebook-cookies').value;
+            await addTask({ type: 'download_facebook', name: `Facebook: ${urls.length} URL${urls.length > 1 ? 's' : ''}`, params: { urls, max_videos: maxVideos, cookies, destination: 'facebook' } });
+        }
+
+        // YouTube Channel download
+        let lastChannelParams = null;  // Keep the most recent download parameters
+
+        async function startChannelDownload() {
+            const channelUrl = document.getElementById('channel-url').value.trim();
+            if (!channelUrl) { addLog('❌ YouTube URL required', 'error'); return; }
+
+            const maxDuration = parseInt(document.getElementById('channel-max-duration').value) || 5;
+            const maxVideos = parseInt(document.getElementById('channel-max-videos').value) || 20;
+            const quality = document.getElementById('channel-quality').value;
+            const destination = document.getElementById('channel-destination').value;
+            const language = document.getElementById('channel-language').value;
+            const shortsOnly = document.getElementById('channel-shorts-only').checked;
+            const noShorts = document.getElementById('channel-no-shorts').checked;
+
+            // Choose a task name
+            let taskName = 'YouTube';
+            if (channelUrl.includes('search_query') || channelUrl.includes('/results')) {
+                taskName = 'Search YT';
+            } else if (channelUrl.includes('playlist')) {
+                taskName = 'Playlist YT';
+            } else if (channelUrl.includes('@')) {
+                taskName = channelUrl.split('@')[1]?.split('/')[0] || 'YouTube channel';
+            }
+
+            const langLabel = language ? ` [${language.toUpperCase()}]` : '';
+
+            const params = {
+                channel_url: channelUrl,
+                max_duration: maxDuration * 60,
+                max_videos: maxVideos,
+                quality: quality,
+                destination: destination,
+                language: language,
+                shorts_only: shortsOnly,
+                no_shorts: noShorts
+            };
+
+            // Save parameters for resuming
+            lastChannelParams = { taskName, langLabel, maxDuration, maxVideos, params };
+            localStorage.setItem('lastChannelDownload', JSON.stringify(lastChannelParams));
+
+            await addTask({
+                type: 'download_channel',
+                name: `${taskName}${langLabel} (≤${maxDuration}min, max ${maxVideos})`,
+                params: params
+            });
+
+            // Keep the URL available for another run
+        }
+
+        async function resumeLastDownload() {
+            // Restore from localStorage when not in memory
+            if (!lastChannelParams) {
+                const saved = localStorage.getItem('lastChannelDownload');
+                if (saved) {
+                    lastChannelParams = JSON.parse(saved);
+                }
+            }
+
+            if (!lastChannelParams) {
+                addLog('❌ No previous download to resume', 'error');
+                return;
+            }
+
+            const { taskName, langLabel, maxDuration, maxVideos, params } = lastChannelParams;
+
+            addLog(`🔄 Resuming: ${taskName}${langLabel}`, 'info');
+
+            await addTask({
+                type: 'download_channel',
+                name: `↻ ${taskName}${langLabel} (≤${maxDuration}min, max ${maxVideos})`,
+                params: params
+            });
+        }
+
+        // Other downloads
+        async function startPexelsDownload() {
+            const cat = document.getElementById('pexels-category').value;
+            const kw = document.getElementById('pexels-keywords').value;
+            const n = document.getElementById('pexels-count').value;
+            await addTask({ type: 'download_pexels', name: `Pexels - ${cat}`, params: { categories: [cat], keywords: kw ? kw.split(',').map(k => k.trim()) : [cat], per_page: parseInt(n), max_videos: parseInt(n) }});
+        }
+
+        async function startYoutubeDownload() {
+            const cat = document.getElementById('youtube-category').value;
+            const n = document.getElementById('youtube-count').value;
+            await addTask({ type: 'download_youtube', name: `YouTube CC - ${cat}`, params: { categories: [cat], videos_per_category: parseInt(n) }});
+        }
+
+        async function startWikimediaDownload() {
+            const kw = document.getElementById('wikimedia-keywords').value;
+            const n = document.getElementById('wikimedia-count').value;
+            await addTask({ type: 'download_wikimedia', name: `Wikimedia - ${kw}`, params: { keywords: kw.split(',').map(k => k.trim()), limit: parseInt(n) }});
+        }
+
+        async function startAnalysis() {
+            const src = document.getElementById('analyze-source').value;
+            const mode = document.getElementById('analyze-mode').value;
+            await addTask({ type: 'analyze', name: `Analysis - ${src}`, params: { source_dir: src, dry_run: mode === 'dry' }});
+        }
+
+        // ======== CONVERT ========
+        let convMode = 'file';
+
+        function setConvertMode(mode) {
+            convMode = mode;
+            document.getElementById('conv-source-file').classList.toggle('hidden', mode !== 'file');
+            document.getElementById('conv-source-folder').classList.toggle('hidden', mode !== 'folder');
+            document.getElementById('conv-mode-file').className = `px-4 py-2 rounded text-sm font-semibold ${mode==='file' ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`;
+            document.getElementById('conv-mode-folder').className = `px-4 py-2 rounded text-sm font-semibold ${mode==='folder' ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`;
+        }
+
+        function updateConvOptions() {
+            const fmt = document.getElementById('conv-format').value;
+            const audioFmts = ['mp3','aac','ogg','m4a','opus'];
+            const videoFmts = ['mp4','webm','mkv','avi','mov'];
+            document.getElementById('conv-opts-audio').classList.toggle('hidden', !audioFmts.includes(fmt));
+            document.getElementById('conv-opts-wav').classList.toggle('hidden', fmt !== 'wav');
+            document.getElementById('conv-opts-video').classList.toggle('hidden', !videoFmts.includes(fmt));
+            document.getElementById('conv-opts-gif').classList.toggle('hidden', fmt !== 'gif');
+            document.getElementById('conv-tv-compat-row').classList.toggle('hidden', fmt !== 'mp4');
+            // FLAC is lossless; hide bitrate options
+        }
+
+        function toggleConvOutCustom() {
+            const mode = document.getElementById('conv-out-mode').value;
+            document.getElementById('conv-out-custom').classList.toggle('hidden', mode !== 'custom');
+        }
+
+        async function browseConvFile() {
+            try {
+                const res = await fetch('/api/browse-file');
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    document.getElementById('conv-file').value = data.file;
+                    // Auto-remplir info
+                    const ext = data.file.split('.').pop().toLowerCase();
+                    document.getElementById('conv-info').textContent = `Source: .${ext}`;
+                }
+            } catch(e) { addLog('❌ Could not open the file dialog', 'error'); }
+        }
+
+        async function browseConvFolder() {
+            try {
+                const res = await fetch('/api/browse-folder');
+                const data = await res.json();
+                if (data.status === 'ok') document.getElementById('conv-folder').value = data.folder;
+            } catch(e) { addLog('❌ Could not open the folder', 'error'); }
+        }
+
+        async function startConvertFile() {
+            const fmt = document.getElementById('conv-format').value;
+            const outMode = document.getElementById('conv-out-mode').value;
+            const outCustom = document.getElementById('conv-out-custom').value.trim();
+            const overwrite = document.getElementById('conv-overwrite').checked;
+
+            if (outMode === 'custom' && !outCustom) { addLog('❌ Output path required', 'error'); return; }
+
+            const audioFmts = ['mp3','aac','ogg','m4a','opus'];
+            const videoFmts = ['mp4','webm','mkv','avi','mov'];
+
+            let extraOpts = {};
+            if (audioFmts.includes(fmt)) {
+                extraOpts.bitrate = document.getElementById('conv-bitrate').value;
+                extraOpts.channels = document.getElementById('conv-audio-channels').value;
+            } else if (fmt === 'wav') {
+                extraOpts.sample_rate = parseInt(document.getElementById('conv-samplerate').value);
+                extraOpts.channels = document.getElementById('conv-wav-channels').value;
+            } else if (videoFmts.includes(fmt)) {
+                extraOpts.resolution = document.getElementById('conv-resolution').value;
+                extraOpts.crf = document.getElementById('conv-crf').value;
+                if (fmt === 'mp4') {
+                    extraOpts.tv_compatible = document.getElementById('conv-tv-compatible').checked;
+                }
+            } else if (fmt === 'gif') {
+                extraOpts.gif_start = parseInt(document.getElementById('conv-gif-start').value) || 0;
+                extraOpts.gif_duration = parseInt(document.getElementById('conv-gif-duration').value) || 5;
+                extraOpts.gif_fps = parseInt(document.getElementById('conv-gif-fps').value) || 15;
+            }
+
+            if (convMode === 'file') {
+                const file = document.getElementById('conv-file').value.trim();
+                if (!file) { addLog('❌ Source file required', 'error'); return; }
+                const fname = file.split('\\').pop().split('/').pop();
+                await addTask({
+                    type: 'convert_file',
+                    name: `Convert → .${fmt}: ${fname}`,
+                    params: { mode: 'file', source: file, format: fmt, out_mode: outMode, out_custom: outCustom, overwrite, ...extraOpts }
+                });
+            } else {
+                const folder = document.getElementById('conv-folder').value.trim();
+                if (!folder) { addLog('❌ Source folder required', 'error'); return; }
+                const dname = folder.split('\\').pop() || folder;
+                await addTask({
+                    type: 'convert_file',
+                    name: `Convert batch → .${fmt}: ${dname}`,
+                    params: { mode: 'folder', source: folder, format: fmt, out_mode: outMode, out_custom: outCustom, overwrite, ...extraOpts }
+                });
+            }
+        }
+
+        // ======== WAV ========
+        async function loadWavQuickFolders() {
+            try {
+                const res = await fetch('/api/data-subfolders');
+                const folders = await res.json();
+                const container = document.getElementById('wav-quick-folders');
+                container.innerHTML = folders
+                    .filter(f => f.count > 0)
+                    .map(f => `<button onclick="document.getElementById('wav-folder').value='${f.path.replace(/\\/g, '\\\\')}'"
+                        class="px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-xs">
+                        📁 ${f.name} (${f.count})
+                    </button>`).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function browseWavFolder() {
+            try {
+                const res = await fetch('/api/browse-folder');
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    document.getElementById('wav-folder').value = data.folder;
+                }
+            } catch(e) { addLog('❌ Could not open the folder', 'error'); }
+        }
+
+        function toggleWavCustomOut() {
+            const mode = document.getElementById('wav-output-mode').value;
+            document.getElementById('wav-output-custom').classList.toggle('hidden', mode !== 'custom');
+        }
+
+        async function startWavConvert() {
+            const folder = document.getElementById('wav-folder').value.trim();
+            if (!folder) { addLog('❌ Source folder required', 'error'); return; }
+            const outputMode = document.getElementById('wav-output-mode').value;
+            const outputCustom = document.getElementById('wav-output-custom').value.trim();
+            const sampleRate = parseInt(document.getElementById('wav-sample-rate').value);
+            const channels = parseInt(document.getElementById('wav-channels').value);
+            const overwrite = document.getElementById('wav-overwrite').checked;
+
+            if (outputMode === 'custom' && !outputCustom) {
+                addLog('❌ Custom output path required', 'error'); return;
+            }
+
+            const folderName = folder.split('\\').pop() || folder.split('/').pop() || folder;
+            await addTask({
+                type: 'convert_to_wav',
+                name: `WAV → ${folderName}`,
+                params: { folder, output_mode: outputMode, output_custom: outputCustom,
+                          sample_rate: sampleRate, channels, overwrite }
+            });
+        }
+
+        async function startOrganize(type) {
+            await addTask({ type: type === 'andrew' ? 'organize_andrew' : 'organize', name: type === 'andrew' ? 'Andrew organization' : 'Simple organization', params: {} });
+        }
+
+        // Task management
+        async function addTask(task) {
+            try {
+                await fetch('/api/task', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(task) });
+                addLog(`📋 Task added: ${task.name}`, 'info');
+                updateQueueDisplay();
+            } catch (e) { addLog(`❌ Error: ${e.message}`, 'error'); }
+        }
+
+        async function updateQueueDisplay() {
+            try {
+                const response = await fetch('/api/queue');
+                const data = await response.json();
+                document.getElementById('stat-queue').textContent = data.queue_size;
+                document.getElementById('queue-count').textContent = `${data.queue_size} tasks`;
+
+                const statusEl = document.getElementById('stat-status');
+                statusEl.textContent = data.is_processing ? 'Running' : 'Ready';
+                statusEl.className = data.is_processing ? 'text-2xl font-bold text-yellow-500 pulse' : 'text-2xl font-bold text-green-600';
+
+                const queueList = document.getElementById('queue-list');
+                let html = '';
+                if (data.current_task) {
+                    html += `<div class="bg-yellow-50 border border-yellow-300 rounded p-3"><div class="flex items-center justify-between"><span class="font-semibold text-yellow-700"><i class="fas fa-spinner fa-spin mr-2"></i>${data.current_task.name}</span><span class="text-xs text-yellow-600">Running</span></div></div>`;
+                }
+                data.history.slice(-5).reverse().forEach(task => {
+                    const isErr = task.status === 'error';
+                    html += `<div class="bg-gray-50 border border-gray-200 rounded p-3"><div class="flex items-center justify-between"><span class="${isErr ? 'text-red-600' : 'text-green-600'}"><i class="fas ${isErr ? 'fa-times' : 'fa-check'} mr-2"></i>${task.name}</span><span class="text-xs text-gray-500">${task.status}</span></div></div>`;
+                });
+                queueList.innerHTML = html || '<div class="text-gray-400 text-center py-4">No queued tasks</div>';
+            } catch (e) { console.error(e); }
+        }
+
+        // Logs
+        function addLog(message, level = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const waiting = logsDiv.querySelector('.text-gray-400');
+            if (waiting && waiting.textContent.includes('attente')) waiting.remove();
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${level} py-1 border-b border-gray-200`;
+            entry.innerHTML = `<span class="text-gray-400">[${new Date().toLocaleTimeString()}]</span> ${message}`;
+            logsDiv.appendChild(entry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+            while (logsDiv.children.length > 100) logsDiv.removeChild(logsDiv.firstChild);
+        }
+
+        function clearLogs() { document.getElementById('logs').innerHTML = '<div class="text-gray-400">Logs cleared</div>'; }
+
+        // Config
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                document.getElementById('config-pexels-key').value = '';
+                document.getElementById('config-pexels-key').placeholder = config.pexels_configured ? 'Configured; leave blank to keep the current key' : 'Enter a Pexels API key';
+                document.getElementById('config-max-size').value = config.max_file_size_mb || 30;
+            } catch (e) { console.error(e); }
+        }
+
+        function openConfig() { document.getElementById('config-modal').classList.remove('hidden'); }
+        function closeConfig() { document.getElementById('config-modal').classList.add('hidden'); }
+
+        async function saveConfig() {
+            const config = { pexels_api_key: document.getElementById('config-pexels-key').value, max_file_size_mb: parseInt(document.getElementById('config-max-size').value) };
+            try {
+                await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+                addLog('✅ Settings saved', 'success');
+                closeConfig();
+            } catch (e) { addLog(`❌ Error: ${e.message}`, 'error'); }
+        }
+
+        function updateStatus(connected) {
+            document.getElementById('status-indicator').innerHTML = connected
+                ? '<span class="w-2 h-2 bg-green-500 rounded-full"></span><span class="text-sm text-gray-500">Connected</span>'
+                : '<span class="w-2 h-2 bg-red-500 rounded-full"></span><span class="text-sm text-gray-500">Disconnected</span>';
+        }
+
+        async function openDataFolder() {
+            try {
+                await fetch('/api/open-folder');
+                addLog('📂 Folder opened', 'info');
+            } catch (e) {
+                addLog('❌ Could not open the folder', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
