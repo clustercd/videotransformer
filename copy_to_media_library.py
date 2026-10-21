@@ -1,4 +1,4 @@
-"Copy organized MP4 videos into Andrew/Encarta."
+"Copy organized MP4 videos into MediaLibrary/Encarta."
 import json
 import os
 import shutil
@@ -9,8 +9,8 @@ from src.settings import DATA_DIR
 # Paths
 PROJECT_DIR = Path(__file__).resolve().parent
 SOURCE_DIR = DATA_DIR / "organized"
-ANDREW_HOME = Path(os.environ.get("ANDREW_HOME", Path.home() / "Andrew"))
-ENCARTA_DIR = ANDREW_HOME / "data" / "encarta"
+MEDIA_LIBRARY_HOME = Path(os.environ.get("MEDIA_LIBRARY_HOME", Path.home() / "MediaLibrary"))
+ENCARTA_DIR = MEDIA_LIBRARY_HOME / "data" / "encarta"
 DEST_DIR = ENCARTA_DIR / "videos_mp4"
 INDEX_FILE = ENCARTA_DIR / "encarta_index.json"
 
@@ -30,7 +30,7 @@ def main():
     # API index
     videos_index = []
 
-    print("🎬 COPY VIDEOS TO ANDREW/ENCARTA")
+    print("🎬 COPY VIDEOS TO MEDIA_LIBRARY/ENCARTA")
     print("=" * 60)
 
     # Visit each category
@@ -97,7 +97,7 @@ def main():
     for cat, count in sorted(stats["by_category"].items(), key=lambda x: x[1], reverse=True):
         print(f"  • {cat}: {count} videos")
 
-    print("\n✨ Completed. Videos are now available in Andrew/Encarta")
+    print("\n✨ Completed. Videos are now available in MediaLibrary/Encarta")
 
 
 if __name__ == "__main__":

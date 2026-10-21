@@ -2,7 +2,7 @@
 
 A local video download, conversion and organization toolkit with a Flask dashboard.
 Download from supported sources, convert media with FFmpeg, browse local videos,
-and optionally describe frames with BLIP or export organized videos to Andrew.
+and optionally describe frames with BLIP or export organized videos to a local media library.
 
 ## At a glance
 
@@ -67,7 +67,7 @@ downloads require network access. Conversions use the locally installed FFmpeg.
 | Conversion | Audio/video formats, WAV extraction and short GIF clips |
 | Queue | One background worker, task status and local activity logs |
 | Optional analysis | BLIP frame captions, with preview or filename updates |
-| Organization | Keyword categories and an optional Andrew export |
+| Organization | Keyword categories and an optional media-library export |
 
 Source access and licensing vary. A search result or downloader filter does not
 guarantee permission to download or redistribute a video. Review each source's
@@ -82,7 +82,7 @@ terms and attribution requirements. No downloaded media is included here.
 | `VIDEOTRANSFORMER_DATA_DIR` | Media and private state; defaults to `data/` |
 | `VIDEOTRANSFORMER_LOGS_DIR` | Activity logs; defaults to `logs/` |
 | `VIDEOTRANSFORMER_SECRET_KEY` | Optional stable Flask secret; otherwise generated per process |
-| `ANDREW_HOME` | Optional Andrew export root; defaults to `~/Andrew` |
+| `MEDIA_LIBRARY_HOME` | Optional media-library export root; defaults to `~/MediaLibrary` |
 
 Set variables in your shell before starting. `.env.example` documents the names;
 the application does not automatically load `.env` files.
@@ -119,8 +119,8 @@ Review a preview before renaming your files.
 | `RUN_LIGHT.bat` | Run the optional BLIP analyzer |
 | `TEST_QUICK.bat` | Analyze up to five local videos; requires AI dependencies |
 | `ORGANIZE.bat` | Copy videos into keyword categories |
-| `COPIER_VERS_ANDREW.bat` | Copy organized MP4 files and write an Andrew index |
-| `ORGANISER_ANDREW.bat` | Build the optional Andrew hierarchy |
+| `COPIER_VERS_MEDIA_LIBRARY.bat` | Copy organized MP4 files and write a media index |
+| `ORGANISER_MEDIA_LIBRARY.bat` | Build the optional media-library hierarchy |
 | `CLEANUP.bat` | Preview cache cleanup; never deletes documentation or media |
 | `DOWNLOAD_YOUTUBE.bat` | Run preset educational YouTube searches |
 | `DOWNLOAD_WIKIMEDIA.bat`, `DOWNLOAD_TARGETED.bat` | Run Wikimedia search presets |
@@ -132,8 +132,10 @@ Use the dashboard for an individual URL. Legacy command filenames, category IDs
 and French search phrases are retained for compatibility and French-language
 content discovery; the interface and documentation are in English.
 
-Andrew integration is optional. Export commands copy files and can replace their
+Media-library export is optional. Export commands copy files and can replace their
 generated indexes; review the destination before running them.
+
+When upgrading, update launchers and external task clients to the current media-library script names and the `organize_media_library` task type. Set `MEDIA_LIBRARY_HOME` explicitly to reuse an existing export directory. Existing media and indexes are not moved automatically.
 
 ## Development and release checks
 

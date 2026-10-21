@@ -20,7 +20,7 @@ python scripts/audit_public.py
 python scripts/audit_git_history.py
 ```
 
-Live downloads, private account sessions, Andrew export and BLIP model inference
+Live downloads, private account sessions, MediaLibrary export and BLIP model inference
 require separate user-specific acceptance testing. Provider availability and
 media licenses are not certified by these checks. No real download, media
-rename or Andrew export is performed as part of publication validation.
+rename or MediaLibrary export is performed as part of publication validation.

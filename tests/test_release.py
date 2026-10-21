@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -118,6 +119,40 @@ class ApplicationTests(unittest.TestCase):
         })
         self.assertEqual(again["skipped"], 1)
         self.assertEqual(output.read_bytes(), original_output)
+
+
+class MediaLibraryExportTests(unittest.TestCase):
+    def test_export_scripts_use_configured_destination_and_preserve_sources(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            media = root / "media"
+            library = root / "library"
+            library.mkdir()
+            source = media / "organized" / "science" / "solar_planet.mp4"
+            source.parent.mkdir(parents=True)
+            payload = b"synthetic-video-fixture"
+            source.write_bytes(payload)
+            raw_source = media / "solar_planet.mp4"
+            raw_source.write_bytes(payload)
+            environment = os.environ | {
+                "VIDEOTRANSFORMER_DATA_DIR": str(media),
+                "VIDEOTRANSFORMER_LOGS_DIR": str(root / "logs"),
+                "MEDIA_LIBRARY_HOME": str(library),
+                "PYTHONIOENCODING": "utf-8",
+            }
+            for script in ("copy_to_media_library.py", "src/organiser_media_library.py"):
+                subprocess.run([sys.executable, str(ROOT / script)], cwd=ROOT,
+                               env=environment, capture_output=True, check=True, timeout=30)
+            copied = library / "data/encarta/videos_mp4/science_solar_planet.mp4"
+            self.assertEqual(copied.read_bytes(), payload)
+            self.assertEqual(source.read_bytes(), payload)
+            self.assertEqual(raw_source.read_bytes(), payload)
+            index = json.loads((library / "data/encarta/encarta_index.json").read_text())
+            self.assertEqual(index["statistics"]["total_videos"], 1)
+            catalog = json.loads((library / "data/encyclopedie/catalogue_media_library.json").read_text())
+            self.assertEqual(len(catalog["index_global"]), 1)
+            categorized = library / "data/encyclopedie/par_theme/espace_astronomie/solar_planet.mp4"
+            self.assertEqual(categorized.read_bytes(), payload)
 
 
 class CleanupTests(unittest.TestCase):

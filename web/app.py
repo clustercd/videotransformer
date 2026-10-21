@@ -177,8 +177,8 @@ def execute_task(task):
         return run_analyze(task.get('params', {}))
     elif task_type == 'organize':
         return run_organize(task.get('params', {}))
-    elif task_type == 'organize_andrew':
-        return run_organize_andrew(task.get('params', {}))
+    elif task_type == 'organize_media_library':
+        return run_organize_media_library(task.get('params', {}))
     elif task_type == 'convert_to_wav':
         return run_convert_to_wav(task.get('params', {}))
     elif task_type == 'convert_file':
@@ -1211,11 +1211,11 @@ def run_convert_to_wav(params):
             'output_dir': str(out_dir)}
 
 
-def run_organize_andrew(params):
-    "Run the optional Andrew hierarchy export."
-    log_message("📚 Organizing the Andrew hierarchy...")
+def run_organize_media_library(params):
+    "Run the optional MediaLibrary hierarchy export."
+    log_message("📚 Organizing the MediaLibrary hierarchy...")
 
-    script_path = SRC_DIR / 'organiser_andrew.py'
+    script_path = SRC_DIR / 'organiser_media_library.py'
     if script_path.exists():
         try:
             result = subprocess.run(
@@ -1223,7 +1223,7 @@ def run_organize_andrew(params):
                 capture_output=True, text=True, timeout=300,
                 input='oui\n'
             )
-            log_message(f"✅ Andrew organization completed")
+            log_message(f"✅ MediaLibrary organization completed")
             return {'status': 'completed', 'output': result.stdout[-500:] if result.stdout else ''}
         except Exception as e:
             log_message(f"❌ Error: {e}", 'error')

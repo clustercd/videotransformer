@@ -1,4 +1,4 @@
-"Build an age, subject and topic hierarchy for Andrew/Encarta."
+"Build an age, subject and topic hierarchy for MediaLibrary/Encarta."
 import json
 import os
 from pathlib import Path
@@ -10,11 +10,11 @@ except ImportError:
 import shutil
 
 
-ANDREW_HOME = Path(os.environ.get("ANDREW_HOME", Path.home() / "Andrew"))
-ORGANIZED_DIR = ANDREW_HOME / "data" / "encyclopedie"
+MEDIA_LIBRARY_HOME = Path(os.environ.get("MEDIA_LIBRARY_HOME", Path.home() / "MediaLibrary"))
+ORGANIZED_DIR = MEDIA_LIBRARY_HOME / "data" / "encyclopedie"
 
 # AGE, SUBJECT AND TOPIC HIERARCHY
-STRUCTURE_ANDREW = {
+STRUCTURE_MEDIA_LIBRARY = {
     'par_age': {
         'nom': '📚 By age',
         'description': 'Age-appropriate content',
@@ -205,17 +205,17 @@ def categoriser_video(filename: str, stem: str):
     stem_lower = stem.lower()
 
     # By age
-    for age, config in STRUCTURE_ANDREW['par_age']['categories'].items():
+    for age, config in STRUCTURE_MEDIA_LIBRARY['par_age']['categories'].items():
         if any(mot in stem_lower for mot in config['mots_cles']):
             categories['age'].append(age)
 
     # By school subject
-    for matiere, config in STRUCTURE_ANDREW['par_matiere']['categories'].items():
+    for matiere, config in STRUCTURE_MEDIA_LIBRARY['par_matiere']['categories'].items():
         if any(mot in stem_lower for mot in config['mots_cles']):
             categories['matiere'].append(matiere)
 
     # By topic
-    for theme, config in STRUCTURE_ANDREW['par_theme']['categories'].items():
+    for theme, config in STRUCTURE_MEDIA_LIBRARY['par_theme']['categories'].items():
         if any(mot in stem_lower for mot in config['mots_cles']):
             categories['theme'].append(theme)
 
@@ -224,7 +224,7 @@ def categoriser_video(filename: str, stem: str):
 def organiser_encyclopedie():
     "Run the organiser encyclopedie workflow."
     print("=" * 60)
-    print("ANDREW ENCYCLOPEDIA ORGANIZATION")
+    print("MEDIA_LIBRARY ENCYCLOPEDIA ORGANIZATION")
     print("=" * 60)
     print()
     print(f"📍 DESTINATION: {ORGANIZED_DIR}")
@@ -235,7 +235,7 @@ def organiser_encyclopedie():
     parent_dir = ORGANIZED_DIR.parent
     if not parent_dir.exists():
         print(f"❌ ERROR: Directory {parent_dir} does not exist !")
-        print("   Check the ANDREW_HOME environment variable:")
+        print("   Check the MEDIA_LIBRARY_HOME environment variable:")
         input("\nPress ENTER...")
         return
 
@@ -243,7 +243,7 @@ def organiser_encyclopedie():
     ORGANIZED_DIR.mkdir(parents=True, exist_ok=True)
 
     # Main directory structure
-    for dimension, config in STRUCTURE_ANDREW.items():
+    for dimension, config in STRUCTURE_MEDIA_LIBRARY.items():
         if dimension == 'series_cultes':
             continue
 
@@ -272,7 +272,7 @@ def organiser_encyclopedie():
         all_videos.extend(DATA_DIR.glob(f"**/*{ext}"))
 
     # Exclude organized copies and desktop metadata
-    all_videos = [v for v in all_videos if 'encyclopedie_andrew' not in str(v)
+    all_videos = [v for v in all_videos if 'encyclopedie_media_library' not in str(v)
                   and 'organized' not in str(v) and v.name != 'desktop.ini']
 
     print(f"\n\n📹 {len(all_videos)} videos to organize...")
@@ -328,29 +328,29 @@ def organiser_encyclopedie():
         catalogue['index_global'].append(video_info)
 
     # Save the catalog
-    catalogue_file = ORGANIZED_DIR / "catalogue_andrew.json"
+    catalogue_file = ORGANIZED_DIR / "catalogue_media_library.json"
     with open(catalogue_file, 'w', encoding='utf-8') as f:
         json.dump(catalogue, f, indent=2, ensure_ascii=False)
 
     # Write a Markdown index
     readme = ORGANIZED_DIR / "INDEX.md"
     with open(readme, 'w', encoding='utf-8') as f:
-        f.write("# 📚 ANDREW ENCYCLOPEDIA\n\n")
+        f.write("# 📚 MEDIA_LIBRARY ENCYCLOPEDIA\n\n")
         f.write(f"Total : {len(all_videos)} educational videos\n\n")
 
         f.write("## 📚 By age\n\n")
         for age, count in sorted(stats['age'].items()):
-            emoji = STRUCTURE_ANDREW['par_age']['categories'][age]['emoji']
+            emoji = STRUCTURE_MEDIA_LIBRARY['par_age']['categories'][age]['emoji']
             f.write(f"- {emoji} **{age.replace('_', ' ').title()}** : {count} videos\n")
 
         f.write("\n## 📕 By subject\n\n")
         for mat, count in sorted(stats['matiere'].items()):
-            emoji = STRUCTURE_ANDREW['par_matiere']['categories'][mat]['emoji']
+            emoji = STRUCTURE_MEDIA_LIBRARY['par_matiere']['categories'][mat]['emoji']
             f.write(f"- {emoji} **{mat.replace('_', ' ').title()}** : {count} videos\n")
 
         f.write("\n## 🎨 By topic\n\n")
         for theme, count in sorted(stats['theme'].items()):
-            emoji = STRUCTURE_ANDREW['par_theme']['categories'][theme]['emoji']
+            emoji = STRUCTURE_MEDIA_LIBRARY['par_theme']['categories'][theme]['emoji']
             f.write(f"- {emoji} **{theme.replace('_', ' ').title()}** : {count} videos\n")
 
     # Summary
