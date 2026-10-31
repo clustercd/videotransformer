@@ -92,6 +92,85 @@ class ApplicationTests(unittest.TestCase):
         self.assertEqual(task["name"], "Synthetic task")
         self.module.task_queue.task_done()
 
+    def test_download_paths_allow_nested_relative_directories(self):
+        destination = self.module._resolve_download_path("downloads/2026/nature")
+        self.assertEqual(destination, self.module.DATA_DIR / "downloads/2026/nature")
+        filename = self.module._validated_download_filename(
+            "subfolder/clip", destination)
+        self.assertEqual(filename, "subfolder/clip")
+        self.assertEqual(
+            self.module._prepare_download_directory("nested", base=destination),
+            destination / "nested",
+        )
+
+    def test_download_paths_reject_absolute_traversal_and_windows_paths(self):
+        for path in ("../outside", "/tmp/outside", r"..\outside",
+                     r"C:\outside", r"folder\..\outside"):
+            with self.subTest(path=path):
+                with self.assertRaises(ValueError):
+                    self.module._resolve_download_path(path)
+
+        destination = self.module.DATA_DIR / "safe"
+        destination.mkdir(parents=True, exist_ok=True)
+        for filename in ("../outside", "/tmp/outside", r"..\outside",
+                         r"C:\outside", "nested/../outside"):
+            with self.subTest(filename=filename):
+                with self.assertRaises(ValueError):
+                    self.module._validated_download_filename(filename, destination)
+
+    def test_download_paths_reject_symlink_escape(self):
+        outside = self.root / "outside"
+        outside.mkdir()
+        link = self.module.DATA_DIR / "escape"
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("Directory symlinks are not available")
+        with self.assertRaises(ValueError):
+            self.module._resolve_download_path("escape/new")
+
+        safe = self.module.DATA_DIR / "safe"
+        safe.mkdir(exist_ok=True)
+        (safe / "escape").symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            self.module._validated_download_filename("escape/video", safe)
+
+    def test_download_task_endpoint_rejects_unsafe_paths_before_queueing(self):
+        download_types = (
+            ("download_direct", {"destination": "../outside"}),
+            ("download_batch", {"destination": r"..\outside"}),
+            ("download_channel", {"destination": "/tmp/outside"}),
+            ("download_facebook", {"destination": r"C:\outside"}),
+            ("download_youtube", {"categories": ["../outside"]}),
+            ("download_pexels", {"categories": [r"..\outside"]}),
+        )
+        initial_size = self.module.task_queue.qsize()
+        for task_type, params in download_types:
+            with self.subTest(task_type=task_type):
+                response = self.client.post("/api/task", json={
+                    "type": task_type, "params": params,
+                })
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.module.task_queue.qsize(), initial_size)
+
+    def test_download_task_endpoint_accepts_safe_nested_paths_and_filename(self):
+        for task_type, params in (
+            ("download_direct", {
+                "destination": "downloads/family", "filename": "2026/clip",
+            }),
+            ("download_batch", {"destination": "downloads/family"}),
+            ("download_channel", {"destination": "youtube/science"}),
+            ("download_facebook", {"destination": "facebook/family"}),
+            ("download_youtube", {"categories": ["science/biology"]}),
+        ):
+            with self.subTest(task_type=task_type):
+                response = self.client.post("/api/task", json={
+                    "type": task_type, "params": params,
+                })
+                self.assertEqual(response.status_code, 200)
+                self.module.task_queue.get_nowait()
+                self.module.task_queue.task_done()
+
     def test_markdown_url_and_windows_filename_normalization(self):
         self.assertEqual(self.module.normalize_pasted_url(
             "[Example](https://example.com/video.mp4)"), "https://example.com/video.mp4")
@@ -175,3 +254,4 @@ class CleanupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
