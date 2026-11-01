@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 import secrets
+from pathlib import PurePosixPath, PureWindowsPath
 from src.settings import DATA_DIR, LOGS_DIR, get_pexels_key
 
 app = Flask(__name__)
@@ -74,6 +75,104 @@ def normalize_pasted_url(url):
     url = (url or '').strip()
     match = re.fullmatch(r'\[([^\]]+)\]\((https?://[^\s)]+)\)', url)
     return match.group(2) if match else url
+
+
+def _resolve_download_path(value, *, base=DATA_DIR, label="destination"):
+    """Resolve an untrusted relative download path without leaving its base."""
+    if not isinstance(value, (str, Path)):
+        raise ValueError(f"{label} must be a relative path")
+    raw = str(value)
+    if "\0" in raw:
+        raise ValueError(f"{label} contains an invalid character")
+
+    # Treat either platform's separator as a separator on every host OS.
+    normalized = raw.replace("\\", "/")
+    posix_path = PurePosixPath(normalized)
+    windows_path = PureWindowsPath(raw)
+    if (posix_path.is_absolute() or windows_path.is_absolute()
+            or windows_path.drive or ".." in posix_path.parts):
+        raise ValueError(f"{label} must stay inside its allowed directory")
+
+    root = Path(base).resolve()
+    candidate = root.joinpath(*posix_path.parts).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{label} must stay inside its allowed directory") from exc
+    return candidate
+
+
+def _prepare_download_directory(destination, *, base=DATA_DIR, label="destination"):
+    """Validate, create, and recheck a download directory (including symlinks)."""
+    directory = _resolve_download_path(destination, base=base, label=label)
+    directory.mkdir(parents=True, exist_ok=True)
+    return _resolve_download_path(destination, base=base, label=label)
+
+
+def _download_root(*, create=False):
+    """Return the configured download root after confirming it stays in DATA_DIR."""
+    configured = Path(config["download_dir"]).expanduser().resolve()
+    root = Path(DATA_DIR).resolve()
+    try:
+        configured.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Configured download directory must stay inside DATA_DIR") from exc
+    if create:
+        configured.mkdir(parents=True, exist_ok=True)
+        # Recheck after creation in case an existing component was a symlink.
+        configured = Path(config["download_dir"]).expanduser().resolve()
+        try:
+            configured.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("Configured download directory must stay inside DATA_DIR") from exc
+    return configured
+
+
+def _validated_download_filename(filename, destination_dir, *, create_parent=False):
+    """Validate a relative yt-dlp filename stem and prepare legitimate subfolders."""
+    if not isinstance(filename, str):
+        raise ValueError("filename must be a relative path")
+    normalized = filename.replace("\\", "/")
+    relative = PurePosixPath(normalized)
+    if (not normalized or relative.is_absolute()
+            or PureWindowsPath(filename).is_absolute()
+            or PureWindowsPath(filename).drive
+            or ".." in relative.parts
+            or normalized.endswith("/")):
+        raise ValueError("filename must stay inside its destination directory")
+    if not relative.parts:
+        raise ValueError("filename must not be empty")
+    if create_parent and len(relative.parts) > 1:
+        _prepare_download_directory("/".join(relative.parts[:-1]), base=destination_dir,
+                                    label="filename")
+    candidate = Path(destination_dir).joinpath(*relative.parts).resolve()
+    try:
+        candidate.relative_to(Path(destination_dir).resolve())
+    except ValueError as exc:
+        raise ValueError("filename must stay inside its destination directory") from exc
+    return "/".join(relative.parts)
+
+
+def _validate_download_task_params(task_type, params):
+    """Validate path-bearing parameters before a download enters the task queue."""
+    if not isinstance(params, dict):
+        raise ValueError("Task params must be an object")
+    if task_type in {"download_direct", "download_batch", "download_channel", "download_facebook"}:
+        destination = params.get("destination", {
+            "download_facebook": "facebook",
+            "download_channel": "youtube",
+        }.get(task_type, "direct"))
+        _resolve_download_path(destination)
+        filename = params.get("filename", "")
+        if filename:
+            _validated_download_filename(filename, _resolve_download_path(destination))
+    elif task_type in {"download_youtube", "download_pexels"}:
+        download_root = _download_root()
+        categories = params.get("categories", ["science"])
+        if not isinstance(categories, (list, tuple)):
+            raise ValueError("categories must be a list")
+        for category in categories:
+            _resolve_download_path(category, base=download_root, label="category")
 
 def log_message(message, level='info'):
     "Send a WebSocket log entry and save it locally."
@@ -414,8 +513,7 @@ def run_download_direct(params):
     ytdlp = get_ytdlp_path()
 
     # Create the destination directory
-    dest_dir = DATA_DIR / destination
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir = _prepare_download_directory(destination)
 
     # Detect the referer when it is not specified
     if not referer:
@@ -462,6 +560,7 @@ def run_download_direct(params):
 
     # Output filename
     if filename:
+        filename = _validated_download_filename(filename, dest_dir, create_parent=True)
         output_template = str(dest_dir / f"{filename}.%(ext)s")
     else:
         output_template = str(dest_dir / "%(title).100s_%(id)s.%(ext)s")
@@ -605,8 +704,7 @@ def run_download_facebook(params):
     max_videos = int(params.get('max_videos') or 0)
     cookies = params.get('cookies', '')
     destination = params.get('destination', 'facebook')
-    dest_dir = DATA_DIR / destination
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir = _prepare_download_directory(destination)
     archive = DATA_DIR / 'facebook_downloaded_archive.txt'
     successes = 0
     errors = []
@@ -663,8 +761,7 @@ def run_download_channel(params):
     ytdlp = get_ytdlp_path()
 
     # Create the destination directory
-    dest_dir = DATA_DIR / destination
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir = _prepare_download_directory(destination)
 
     # Identify the URL type
     is_search = 'search_query' in channel_url or '/results?' in channel_url
@@ -813,10 +910,11 @@ def run_download_youtube(params):
         'histoire': ['histoire france documentaire', 'moyen age', 'révolution française']
     }
 
+    download_root = _download_root(create=True)
     for cat in categories:
         cat_queries = queries.get(cat, [cat])
-        cat_dir = Path(config['download_dir']) / cat
-        cat_dir.mkdir(parents=True, exist_ok=True)
+        cat_dir = _prepare_download_directory(cat, base=download_root, label="category")
+        safe_category = PurePosixPath(str(cat).replace("\\", "/")).name
 
         for query in cat_queries[:2]:
             log_message(f"📥 YouTube search: {query}")
@@ -827,7 +925,7 @@ def run_download_youtube(params):
                 '--max-filesize', '20M',
                 '--max-downloads', str(videos_per_cat),
                 '--match-filter', 'duration < 180',
-                '-o', str(cat_dir / f'{cat}_%(title).50s_%(id)s.%(ext)s'),
+                '-o', str(cat_dir / f'{safe_category}_%(title).50s_%(id)s.%(ext)s'),
                 '--format', 'best[height<=480]',
                 '--no-playlist',
                 '--quiet',
@@ -863,12 +961,12 @@ def run_download_pexels(params):
     keywords = params.get('keywords', [])
     downloaded = 0
 
+    download_root = _download_root(create=True)
     for cat in categories:
         log_message(f"📥 Pexels - Category: {cat}")
 
         cat_keywords = keywords if keywords else [cat]
-        cat_dir = Path(config['download_dir']) / cat
-        cat_dir.mkdir(parents=True, exist_ok=True)
+        cat_dir = _prepare_download_directory(cat, base=download_root, label="category")
 
         for keyword in cat_keywords:
             log_message(f"  🔍 Search: {keyword}")
@@ -901,7 +999,10 @@ def run_download_pexels(params):
                             video_url = video_files[0]['link']
 
                         video_id = video['id']
-                        filename = f"{cat}_{keyword.replace(' ', '_')}_{video_id}.mp4"
+                        filename = _validated_download_filename(
+                            f"{cat_dir.name}_{keyword.replace(' ', '_')}_{video_id}.mp4",
+                            cat_dir,
+                        )
                         filepath = cat_dir / filename
 
                         if not filepath.exists():
@@ -929,8 +1030,7 @@ def run_download_wikimedia(params):
     keywords = params.get('keywords', ['nature', 'science'])
     downloaded = 0
 
-    download_dir = Path(config['download_dir']) / 'wikimedia'
-    download_dir.mkdir(parents=True, exist_ok=True)
+    download_dir = _prepare_download_directory('wikimedia', base=_download_root(create=True))
 
     for keyword in keywords:
         log_message(f"📥 Wikimedia - Search: {keyword}")
@@ -972,7 +1072,8 @@ def run_download_wikimedia(params):
                         if imageinfo:
                             video_url = imageinfo[0].get('url')
                             if video_url:
-                                filename = title.replace(' ', '_')[:80]
+                                filename = _validated_download_filename(
+                                    title.replace(' ', '_')[:80], download_dir)
                                 filepath = download_dir / filename
 
                                 if not filepath.exists():
@@ -1277,11 +1378,21 @@ def api_config():
 @app.route('/api/task', methods=['POST'])
 def api_add_task():
     data = request.json
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Task payload must be an object'}), 400
+    task_type = data.get('type')
+    params = data.get('params', {})
+    if task_type in {'download_direct', 'download_batch', 'download_channel',
+                     'download_facebook', 'download_youtube', 'download_pexels'}:
+        try:
+            _validate_download_task_params(task_type, params)
+        except (TypeError, ValueError) as exc:
+            return jsonify({'error': str(exc)}), 400
     task = {
         'id': datetime.now().strftime('%Y%m%d%H%M%S%f'),
-        'type': data.get('type'),
-        'name': data.get('name', data.get('type')),
-        'params': data.get('params', {}),
+        'type': task_type,
+        'name': data.get('name', task_type),
+        'params': params,
         'status': 'queued',
         'created_at': datetime.now().isoformat()
     }
@@ -1463,3 +1574,4 @@ if __name__ == '__main__':
 
     threading.Thread(target=open_browser_when_ready, daemon=True).start()
     socketio.run(app, host='127.0.0.1', port=5000, debug=False, allow_unsafe_werkzeug=True)
+
